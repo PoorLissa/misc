@@ -3,8 +3,8 @@
 #define SQL_HELPER_H
 
 /*
-    Usage:
- ------------------------------------------------------------------------------
+    How to Use:
+ -------------------------------- cut -----------------------------------------
 
     using sqlHelper::sql;
 
@@ -24,21 +24,18 @@
     ==> str = " SELECT obj_name1, obj_name2 FROM table_name LEFT JOIN other_table_name ON param = 1 WHERE id = 2 AND calc1 = 3 AND calc2 = 4 ORDER BY id"
 
     qh1.SELECT(
-
-        qh1.lB().SELECT("asd").FROM("asd").WHERE("asd").rB() +
-        qh1.SELECT("*").FROM("tab1").WHERE("where").AND("asdasd") +
-        qh1.SELECT("*").FROM("tab2").WHERE("asd") +
-        qh1.txt(" preved medved ") +
-        qh1.lB().SELECT("imu_adr").FROM("BI_R_mzayav" ).WHERE("calc_id=%i", 170520).rB().AS("t1")
+        qh1.lB().SELECT("*").FROM("tab1").WHERE("id=1").rB()
+      + qh1.SELECT("*").FROM("tab2").WHERE("id=2")
+      + qh1.txt(" preved medved ")
+      + qh1.lB().SELECT("imu_adr").FROM("BI_R_mzayav" ).WHERE("calc_id=%i", 170520).rB().AS("t1")
       + qh1.lB().SELECT("prem"   ).FROM("BI_R_objects").WHERE("calc_id=%i", 170523).AND("num=%i", 6).rB().AS("t2")
       + "StrSumm"
-
     )
-    .FROM("BI_R_main").WHERE("calc_id=%i", 170523);
+    .FROM("BI_R_main").WHERE("calc_id=%i", 170523).GROUP_BY("group").ORDER_BY("order");
 
-    == > SELECT (SELECT * FROM (tab1) WHERE id=1), SELECT * FROM (tab2) WHERE id=2,  preved medved , (SELECT imu_adr FROM (BI_R_mzayav) WHERE calc_id=170520) AS t1, (SELECT prem FROM (BI_R_objects) WHERE calc_id=170523 AND num=6) AS t2, StrSumm FROM (BI_R_main) WHERE calc_id=170523
+    == > SELECT (SELECT * FROM (tab1) WHERE id=1), SELECT * FROM (tab2) WHERE id=2,  preved medved , (SELECT imu_adr FROM (BI_R_mzayav) WHERE calc_id=170520) AS t1, (SELECT prem FROM (BI_R_objects) WHERE calc_id=170523 AND num=6) AS t2, StrSumm FROM (BI_R_main) WHERE calc_id=170523 GROUP BY group ORDER BY order
 
- ------------------------------------------------------------------------------
+ -------------------------------- cut -----------------------------------------
 */
 
 namespace sqlHelper
@@ -65,9 +62,11 @@ namespace sqlHelper
     class qAs;
     class qLBracket;
     class qRBracket;
-
-    static AnsiString Command[] = { "",   "(",  ")", "SELECT ", " FROM ", " WHERE ", " LEFT JOIN ", " RIGHT JOIN ", " ORDER BY ", " ON ", " AND ", " GROUP BY ", "UPDATE ", " SET ", "DELETE FROM ", "INSERT INTO ", " VALUES ( ", " AS " };
-    enum   CommandsEnum           { Empty, lBr, rBr, Select,     From,     Where,     LeftJoin,      RightJoin,      OrderBy,      On,     And,     GroupBy,     Update,     Set,    DeleteFrom,     InsertInto,      Values    ,   As   };
+    class qDeleteFrom;
+    class qInsertInto;
+    
+    static AnsiString Commands[] = { "",    " ",   ",",   "(",  ")", "SELECT ", " FROM ", " WHERE ", " LEFT JOIN ", " RIGHT JOIN ", " ORDER BY ", " ON ", " AND ", " GROUP BY ", "UPDATE ", " SET ", "DELETE FROM ", "INSERT INTO ", " VALUES ", " AS " };
+    enum   CommandsEnum            { Empty, Space,  Comma, lBr, rBr,  Select,     From,     Where,     LeftJoin,      RightJoin,      OrderBy,      On,     And,     GroupBy,     Update,     Set,    DeleteFrom,     InsertInto,      Values  ,   As   };
 
     
 
@@ -85,28 +84,18 @@ namespace sqlHelper
         // --- Общие методы для всех субклассов ---
 
         // Добавляем произвольный текст
-        qAny txt(const AnsiString str) { _str = Command[Empty]; return QueryFunc<qAny>(_query, str, Empty); }
+        qAny txt(const AnsiString str) { _str = Commands[Empty]; return QueryFunc<qAny>(this, str, Empty); }
 
      protected:
 
         // Главный метод. Достраивает строку, сохраняет ее и возвращает объект нужного типа.
         template<class Type>
-        Type QueryFunc(qHelper *Query, const AnsiString Data, const int CommandNo)
+        Type QueryFunc(qCommandBase *Query, const AnsiString Data, const int commandNo)
         {
-//            return sqlHelper::qqq<Type>(Query, Data, Command);
+            Type    *thisType = dynamic_cast<Type*>(Query);
+            qHelper *mainObj  = Query->_query;
 
-            AnsiString *command = &sqlHelper::Command[CommandNo];
-
-            if( CommandNo == From )
-            {
-                Query->set(Query->get() + *command + "(" + Data + ")");
-            }
-            else
-            {
-                Query->set(Query->get() + *command + Data);
-            }
-
-            return Type(Query, Query->get());
+            return globalQueryFunc(thisType, mainObj, Data, commandNo);
         }
 
      protected:
@@ -120,6 +109,25 @@ namespace sqlHelper
 
 
 
+    // Основной класс, через объект которого будем создавать запрос
+    class qHelper : public qCommandBase {
+        qHelper& operator =(qHelper &);
+     public:
+        qHelper() : qCommandBase(this, Commands[Empty]) {}
+
+        // При вызове методов основного класса начинаем собирать новый запрос с пустой строки
+        qSelect     SELECT      (const AnsiString str) { _str = Commands[Empty]; return QueryFunc< qSelect     >( this, str, Select     ); }
+        qUpdate     UPDATE      (const AnsiString str) { _str = Commands[Empty]; return QueryFunc< qUpdate     >( this, str, Update     ); }
+        qDeleteFrom DELETE_FROM (const AnsiString str) { _str = Commands[Empty]; return QueryFunc< qDeleteFrom >( this, str, DeleteFrom ); }
+        qInsertInto INSERT_INTO (const AnsiString str) { _str = Commands[Empty]; return QueryFunc< qInsertInto >( this, str, InsertInto ); }
+        qLBracket   lB          ()                     { _str = Commands[Empty]; return QueryFunc< qLBracket   >( this,_str, lBr        ); }
+
+        inline void       set   (AnsiString str)       {  _str = str; }
+        inline AnsiString get   () const               { return _str; }
+    };
+
+
+
     // Промежуточный класс для суммирования объектов (через запятую или через пробел)
     class qSummable : public qCommandBase {
         qSummable& operator =(qSummable &);
@@ -127,8 +135,8 @@ namespace sqlHelper
      public:
         qSummable(qHelper *query, const AnsiString str) : qCommandBase(query, str) {}
 
-        friend qSummable operator +(const char *, qSummable);
-        friend qSummable operator &(const char *, qSummable);
+        friend qSummable operator +(const char *, qSummable);                   // Сложение через запятую
+        friend qSummable operator &(const char *, qSummable);                   // Сложение через пробел
 
         qSummable operator +(qSummable other)
         {
@@ -157,24 +165,24 @@ namespace sqlHelper
      private:
         inline void sum_viaComma(AnsiString &str)
         {
-            _str += ", " + str;
+            _str += Commands[Comma] + Commands[Space] + str;
         }
 
         inline void sum_viaSpace(AnsiString &str)
         {
-            _str += " " + str;
+            _str += Commands[Space] + str;
         }
     };
 
     qSummable operator +(const char *str, qSummable other)
     {
-        other._str = AnsiString(str) + ", " + other._str;
+        other._str = AnsiString(str) + Commands[Comma] + Commands[Space] + other._str;
         return other;
     }
 
     qSummable operator &(const char *str, qSummable other)
     {
-        other._str = AnsiString(str) + " " + other._str;
+        other._str = AnsiString(str) + Commands[Space] + other._str;
         return other;
     }
 
@@ -186,9 +194,9 @@ namespace sqlHelper
      public:
         WhereFamily(qHelper *query, const AnsiString str) : qSummable(query, str) {}
 
-        qWhere WHERE (cStr str       ) { return QueryFunc<qWhere>(_query, str,                         Where); }
-        qWhere WHERE (Str str, cInt i) { return QueryFunc<qWhere>(_query, str.sprintf(str.c_str(), i), Where); }   // %i
-        qWhere WHERE (Str str, cStr s) { return QueryFunc<qWhere>(_query, str.sprintf(str.c_str(), s), Where); }   // %s
+        qWhere WHERE (cStr str       ) { return QueryFunc<qWhere>(this, str,                         Where); }
+        qWhere WHERE (Str str, cInt i) { return QueryFunc<qWhere>(this, str.sprintf(str.c_str(), i), Where); }   // %i
+        qWhere WHERE (Str str, cStr s) { return QueryFunc<qWhere>(this, str.sprintf(str.c_str(), s), Where); }   // %s
     };
 
 
@@ -199,9 +207,9 @@ namespace sqlHelper
      public:
         AndFamily(qHelper *query, const AnsiString str) : qSummable(query, str) {}
 
-        qAnd AND (const AnsiString str) { return QueryFunc<qAnd>(_query, str,                         And); }
-        qAnd AND (Str str, cInt i     ) { return QueryFunc<qAnd>(_query, str.sprintf(str.c_str(), i), And); }      // %i
-        qAnd AND (Str str, cStr s     ) { return QueryFunc<qAnd>(_query, str.sprintf(str.c_str(), s), And); }      // %s
+        qAnd AND (const AnsiString str) { return QueryFunc<qAnd>(this, str,                         And); }
+        qAnd AND (Str str, cInt i     ) { return QueryFunc<qAnd>(this, str.sprintf(str.c_str(), i), And); }      // %i
+        qAnd AND (Str str, cStr s     ) { return QueryFunc<qAnd>(this, str.sprintf(str.c_str(), s), And); }      // %s
     };
 
 
@@ -211,8 +219,8 @@ namespace sqlHelper
      public:
         qSelect(qHelper *query, const AnsiString str) : qCommandBase(query, str) {}
 
-        qFrom FROM (const AnsiString str) { return QueryFunc<qFrom>(_query, str, From ); }
-        qAs   AS   (const AnsiString str) { return QueryFunc<qAs  >(_query, str, As   ); }
+        qFrom FROM (const AnsiString str) { return QueryFunc<qFrom>(this, str, From ); }
+        qAs   AS   (const AnsiString str) { return QueryFunc<qAs  >(this, str, As   ); }
     };
 
 
@@ -223,9 +231,9 @@ namespace sqlHelper
         qAny(qHelper *query, const AnsiString str) : qSummable(query, str) {}
 
         // Добавить методы по мере необходимости
-        qSelect SELECT  (const AnsiString str) { return QueryFunc<qSelect>(_query, str, Select); }
-        qFrom   FROM    (const AnsiString str) { return QueryFunc<qFrom  >(_query, str, From  ); }
-        qAs     AS      (const AnsiString str) { return QueryFunc<qAs    >(_query, str, As    ); }
+        qSelect SELECT  (const AnsiString str) { return QueryFunc<qSelect>(this, str, Select); }
+        qFrom   FROM    (const AnsiString str) { return QueryFunc<qFrom  >(this, str, From  ); }
+        qAs     AS      (const AnsiString str) { return QueryFunc<qAs    >(this, str, As    ); }
     };
 
 
@@ -235,8 +243,8 @@ namespace sqlHelper
      public:
         qAs(qHelper *query, const AnsiString str) : qSummable(query, str) {}
 
-        qFrom FROM (const AnsiString str) { return QueryFunc<qFrom>(_query, str, From); }
-        qAs   AS   (const AnsiString str) { return QueryFunc<qAs  >(_query, str, As  ); }
+        qFrom FROM (const AnsiString str) { return QueryFunc<qFrom>(this, str, From); }
+        qAs   AS   (const AnsiString str) { return QueryFunc<qAs  >(this, str, As  ); }
     };
 
 
@@ -246,9 +254,9 @@ namespace sqlHelper
      public:
         qUpdate(qHelper *query, const AnsiString str) : qCommandBase(query, str) {}
 
-        qSet SET(const AnsiString str) { return QueryFunc<qSet>(_query, str,                         Set); }
-        qSet SET(Str str, cInt n     ) { return QueryFunc<qSet>(_query, str.sprintf(str.c_str(), n), Set); }
-        qSet SET(Str str, cStr s     ) { return QueryFunc<qSet>(_query, str.sprintf(str.c_str(), s), Set); }
+        qSet SET(const AnsiString str) { return QueryFunc<qSet>(this, str,                         Set); }
+        qSet SET(Str str, cInt n     ) { return QueryFunc<qSet>(this, str.sprintf(str.c_str(), n), Set); }
+        qSet SET(Str str, cStr s     ) { return QueryFunc<qSet>(this, str.sprintf(str.c_str(), s), Set); }
     };
 
 
@@ -266,7 +274,7 @@ namespace sqlHelper
      public:
         qInsertInto(qHelper *query, const AnsiString str) : qCommandBase(query, str) {}
 
-        qValues VALUES(const AnsiString str) { return QueryFunc<qValues>(_query, str, Values); }
+        qValues VALUES(const AnsiString str) { return QueryFunc<qValues>(this, str, Values); }
     };
 
 
@@ -275,8 +283,6 @@ namespace sqlHelper
         qValues& operator =(qValues &);
      public:
         qValues(qHelper *query, const AnsiString str) : qCommandBase(query, str) {}
-
-        operator AnsiString () { return _str + " )"; }
     };
 
 
@@ -286,15 +292,12 @@ namespace sqlHelper
      public:
         qFrom(qHelper *query, const AnsiString str) : WhereFamily(query, str) {}
 
-        qLeftJoin  LEFT_JOIN  (const AnsiString str) { return QueryFunc<qLeftJoin >(_query, str, LeftJoin ); }
-        qRightJoin RIGHT_JOIN (const AnsiString str) { return QueryFunc<qRightJoin>(_query, str, RightJoin); }
-        qOrderBy   ORDER_BY   (const AnsiString str) { return QueryFunc<qOrderBy  >(_query, str, OrderBy  ); }
-        qGroupBy   GROUP_BY   (const AnsiString str) { return QueryFunc<qGroupBy  >(_query, str, GroupBy  ); }
+        qLeftJoin  LEFT_JOIN  (const AnsiString str) { return QueryFunc<qLeftJoin >(this, str, LeftJoin ); }
+        qRightJoin RIGHT_JOIN (const AnsiString str) { return QueryFunc<qRightJoin>(this, str, RightJoin); }
+        qOrderBy   ORDER_BY   (const AnsiString str) { return QueryFunc<qOrderBy  >(this, str, OrderBy  ); }
+        qGroupBy   GROUP_BY   (const AnsiString str) { return QueryFunc<qGroupBy  >(this, str, GroupBy  ); }
 
-        qFrom operator [] (AnsiString str)
-        {
-            return QueryFunc<qFrom>(_query, str, From);
-        }
+        qFrom operator [] (AnsiString str) { return QueryFunc<qFrom>(this, str, From); }
     };
 
 
@@ -312,8 +315,8 @@ namespace sqlHelper
      public:
         qLeftJoin(qHelper *query, const AnsiString str) : WhereFamily(query, str) {}
 
-        qOn      ON       (const AnsiString str) { return QueryFunc<qOn     >(_query, str, On     ); }
-        qOrderBy ORDER_BY (const AnsiString str) { return QueryFunc<qOrderBy>(_query, str, OrderBy); }
+        qOn      ON       (const AnsiString str) { return QueryFunc<qOn     >(this, str, On     ); }
+        qOrderBy ORDER_BY (const AnsiString str) { return QueryFunc<qOrderBy>(this, str, OrderBy); }
     };
 
 
@@ -323,8 +326,8 @@ namespace sqlHelper
      public:
         qRightJoin(qHelper *query, const AnsiString str) : WhereFamily(query, str) {}
 
-        qOn      ON       (const AnsiString str) { return QueryFunc<qOn     >(_query, str, On     ); }
-        qOrderBy ORDER_BY (const AnsiString str) { return QueryFunc<qOrderBy>(_query, str, OrderBy); }
+        qOn      ON       (const AnsiString str) { return QueryFunc<qOn     >(this, str, On     ); }
+        qOrderBy ORDER_BY (const AnsiString str) { return QueryFunc<qOrderBy>(this, str, OrderBy); }
     };
 
 
@@ -334,7 +337,7 @@ namespace sqlHelper
      public:
         qOn(qHelper *query, const AnsiString str) : WhereFamily(query, str) {}
 
-        qOrderBy ORDER_BY (const AnsiString str) { return QueryFunc<qOrderBy>(_query, str, OrderBy); }
+        qOrderBy ORDER_BY (const AnsiString str) { return QueryFunc<qOrderBy>(this, str, OrderBy); }
     };
 
 
@@ -344,8 +347,9 @@ namespace sqlHelper
      public:
         qWhere(qHelper *query, const AnsiString str) : AndFamily(query, str) {}
 
-        qOrderBy  ORDER_BY (const AnsiString str) {                        return QueryFunc<qOrderBy >(_query, str, OrderBy); }
-        qRBracket rB       ()                     { _str = Command[Empty]; return QueryFunc<qRBracket>(_query, _str, rBr   ); }
+        qOrderBy  ORDER_BY (const AnsiString str) {                         return QueryFunc<qOrderBy >(this, str, OrderBy); }
+        qGroupBy   GROUP_BY(const AnsiString str) {                         return QueryFunc<qGroupBy >(this, str, GroupBy); }        
+        qRBracket rB       ()                     { _str = Commands[Empty]; return QueryFunc<qRBracket>(this, _str, rBr   ); }
     };
 
 
@@ -355,8 +359,8 @@ namespace sqlHelper
      public:
         qAnd(qHelper *query, const AnsiString str) : AndFamily(query, str) {}
 
-        qOrderBy  ORDER_BY (const AnsiString str) {                        return QueryFunc<qOrderBy >(_query, str, OrderBy); }
-        qRBracket rB       ()                     { _str = Command[Empty]; return QueryFunc<qRBracket>(_query, _str, rBr   ); }
+        qOrderBy  ORDER_BY (const AnsiString str) {                         return QueryFunc<qOrderBy >(this, str, OrderBy); }
+        qRBracket rB       ()                     { _str = Commands[Empty]; return QueryFunc<qRBracket>(this, _str, rBr   ); }
     };
 
 
@@ -374,7 +378,7 @@ namespace sqlHelper
      public:
         qGroupBy(qHelper *query, const AnsiString str) : qCommandBase(query, str) {}
 
-        qOrderBy ORDER_BY (const AnsiString str) { return QueryFunc<qOrderBy>(_query, str, OrderBy); }
+        qOrderBy ORDER_BY (const AnsiString str) { return QueryFunc<qOrderBy>(this, str, OrderBy); }
     };
 
 
@@ -384,10 +388,10 @@ namespace sqlHelper
      public:
         qLBracket(qHelper *query, const AnsiString str) : qSummable(query, str) {}
 
-        qSelect     SELECT      (const AnsiString str) { _str = Command[Empty]; return QueryFunc<qSelect    >(_query, str, Select    ); }
-        qUpdate     UPDATE      (const AnsiString str) { _str = Command[Empty]; return QueryFunc<qUpdate    >(_query, str, Update    ); }
-        qDeleteFrom DELETE_FROM (const AnsiString str) { _str = Command[Empty]; return QueryFunc<qDeleteFrom>(_query, str, DeleteFrom); }
-        qInsertInto INSERT_INTO (const AnsiString str) { _str = Command[Empty]; return QueryFunc<qInsertInto>(_query, str, InsertInto); }
+        qSelect     SELECT      (const AnsiString str) { _str = Commands[Empty]; return QueryFunc<qSelect    >(this, str, Select    ); }
+        qUpdate     UPDATE      (const AnsiString str) { _str = Commands[Empty]; return QueryFunc<qUpdate    >(this, str, Update    ); }
+        qDeleteFrom DELETE_FROM (const AnsiString str) { _str = Commands[Empty]; return QueryFunc<qDeleteFrom>(this, str, DeleteFrom); }
+        qInsertInto INSERT_INTO (const AnsiString str) { _str = Commands[Empty]; return QueryFunc<qInsertInto>(this, str, InsertInto); }
     };
 
 
@@ -397,46 +401,42 @@ namespace sqlHelper
      public:
         qRBracket(qHelper *query, const AnsiString str) : qSummable(query, str) {}
 
-        qAs   AS   (const AnsiString str) { return QueryFunc<qAs  >(_query, str, As   ); }
+        qAs AS (const AnsiString str) { return QueryFunc<qAs>(this, str, As); }
     };
 
-    // ------------------------------------------------------------------------
+    // -------------- Глобальные шаблонные функции ----------------------------
 
-    // Основной класс, через объект которого будем создавать запрос
-    class qHelper : public qCommandBase {
-        qHelper& operator =(qHelper &);
-     public:
-        qHelper() : qCommandBase(this, Command[Empty]) {}
-
-        // При вызове SELECT или UPDATE начинаем собирать запрос с пустой строки
-        qSelect     SELECT      (const AnsiString str) { _str = Command[Empty]; return QueryFunc<qSelect    >(this, str, Select    ); }
-        qUpdate     UPDATE      (const AnsiString str) { _str = Command[Empty]; return QueryFunc<qUpdate    >(this, str, Update    ); }
-        qDeleteFrom DELETE_FROM (const AnsiString str) { _str = Command[Empty]; return QueryFunc<qDeleteFrom>(this, str, DeleteFrom); }
-        qInsertInto INSERT_INTO (const AnsiString str) { _str = Command[Empty]; return QueryFunc<qInsertInto>(this, str, InsertInto); }
-        qLBracket   lB          ()                     { _str = Command[Empty]; return QueryFunc<qLBracket  >(this,_str, lBr       ); }
-
-        inline void       set   (AnsiString str)       {  _str = str; }
-        inline AnsiString get   () const               { return _str; }
-    };
-
-
-    // ------------------------------------------------------------------------
-
-
+    // Заключить строку данных в круглые скобки
     template <class Type>
-    Type qqq(qHelper *Query, const AnsiString Data, const AnsiString Command)
+    Type global_embrace_in_brackets(Type *Query, qHelper *helper, const AnsiString *Data, const int cmd)
     {
-        Query->set(Query->get() + Command + Data);
-        return Type(Query, Query->get());
+        helper->set(helper->get() + Commands[cmd] + Commands[lBr] + *Data + Commands[rBr]);
+
+        return Type(helper, helper->get());
     }
 
+    // Достроить строку данных - основной метод
+    template <class Type>
+    Type globalQueryFunc(Type *Query, qHelper *helper, const AnsiString Data, const int cmd)
+    {
+        helper->set(helper->get() + Commands[cmd] + Data);
+
+        return Type(helper, helper->get());
+    }
+
+    // Специализированная версия
     template <>
-    qFrom qqq(qHelper *Query, const AnsiString Data, const AnsiString Command)
+    qFrom globalQueryFunc(qFrom *Query, qHelper *helper, const AnsiString Data, const int cmd)
     {
-        Query->set(Query->get() + "(" + Command + Data + ")");
-        return qFrom(Query, Query->get());
+        return global_embrace_in_brackets(Query, helper, &Data, cmd);
     }
 
+    // Специализированная версия
+    template <>
+    qValues globalQueryFunc(qValues *Query, qHelper *helper, const AnsiString Data, const int cmd)
+    {
+        return global_embrace_in_brackets(Query, helper, &Data, cmd);
+    }
 
     // ------------------------------------------------------------------------
 }
